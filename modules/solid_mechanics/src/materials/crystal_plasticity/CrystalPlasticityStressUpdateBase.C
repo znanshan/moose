@@ -185,14 +185,13 @@ CrystalPlasticityStressUpdateBase::getSlipSystems()
     _slip_plane_normal[i] /= _slip_plane_normal[i].norm();
     _slip_direction[i] /= _slip_direction[i].norm();
 
-    if (_crystal_lattice_type != CrystalLatticeType::HCP)
+    // The corrected HCP direct-space direction and reciprocal-space plane
+    // also satisfy the Cartesian orthogonality invariant.
+    const auto magnitude = _slip_plane_normal[i] * _slip_direction[i];
+    if (std::abs(magnitude) > libMesh::TOLERANCE)
     {
-      const auto magnitude = _slip_plane_normal[i] * _slip_direction[i];
-      if (std::abs(magnitude) > libMesh::TOLERANCE)
-      {
-        orthonormal_error = true;
-        break;
-      }
+      orthonormal_error = true;
+      break;
     }
   }
 
@@ -229,6 +228,15 @@ CrystalPlasticityStressUpdateBase::transformHexagonalMillerBravaisSlipSystems(
   transform_matrix(1, 0) = 1.0 / (_unit_cell_dimension[0] * std::sqrt(3.0));
   transform_matrix(1, 1) = 2.0 / (_unit_cell_dimension[0] * std::sqrt(3.0));
   transform_matrix(2, 2) = 1.0 / (_unit_cell_dimension[2]);
+
+  // Four-index [u v t w] is a DIRECT-space vector (t=-u-v).
+  // The plane (h k i l) above remains a RECIPROCAL-space covector.
+  RankTwoTensor direction_transform;
+  direction_transform.zero();
+  direction_transform(0, 0) = 1.5 * _unit_cell_dimension[0];
+  direction_transform(1, 0) = 0.5 * std::sqrt(3.0) * _unit_cell_dimension[0];
+  direction_transform(1, 1) = std::sqrt(3.0) * _unit_cell_dimension[0];
+  direction_transform(2, 2) = _unit_cell_dimension[2];
 
   for (const auto i : make_range(_number_slip_systems))
   {
@@ -281,7 +289,7 @@ CrystalPlasticityStressUpdateBase::transformHexagonalMillerBravaisSlipSystems(
     }
 
     // perform transformation calculation
-    _slip_direction[i] = transform_matrix * temporary_slip_direction;
+    _slip_direction[i] = direction_transform * temporary_slip_direction;
     _slip_plane_normal[i] = transform_matrix * temporary_slip_plane;
   }
 }
